@@ -28,7 +28,7 @@ This project is a decentralized health insurance platform leveraging blockchain 
 ### Installation
 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/health-insurance-blockchain.git
+git clone https://github.com/singhrimiumesh/health-insurance-blockchain.git
 cd health-insurance-blockchain
 ```
 
