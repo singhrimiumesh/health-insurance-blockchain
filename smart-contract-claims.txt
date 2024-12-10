@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "./HealthInsurancePolicy.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract ClaimManagement is Ownable {
+    // Claim Structures
+    enum ClaimStatus {
+        Submitted,
+        UnderReview,
+        Approved,
+        Rejected
+    }
+
+    struct Claim {
+        uint256 id;
+        uint256 policyId;
+        address claimant;
+        uint256 claimAmount;
+        ClaimStatus status;
+        uint256 submissionTime;
+        string medicalDocumentHash;
+        address[] reviewers;
+    }
+
+    // Mappings
+    mapping(uint256 => Claim) public claims;
+    mapping(address => uint256[]) public userClaims;
+
+    // Contracts
+    HealthInsurancePolicy public policyContract;
+
+    // Events
+    event ClaimSubmitted(uint256 indexed claimId, address indexed claimant, uint256 claimAmount);
+    event ClaimStatusUpdated(uint256 indexed claimId, ClaimStatus status);
+
+    constructor(address _policyContractAddress) {
+        policyContract = HealthInsurancePolicy(_policyContractAddress);
+    }
+
+    function submitClaim(
+        uint256 _policyId, 
+        uint256 _claimAmount, 
+        string memory _medicalDocumentHash
+    ) external returns (uint256) {
+        // Validate policy
+        require(policyContract.isPolicyValid(_policyId), "Invalid policy");
+        
+        // Get policy details
+        (,address policyholder,,,,,,uint256 claimLimit) = policyContract.getPolicyDetails(_policyId);
+        require(msg.sender == policyholder, "Only policyholder can submit claim");
+        require(_claimAmount <= claimLimit, "Claim amount exceeds limit");
+
+        // Create claim
+        uint256 claimId = uint256(keccak256(abi.encodePacked(block.timestamp, _policyId)));
+        
+        Claim memory newClaim = Claim({
+            id: claimId,
+            policyId: _policyId,
+            claimant: msg.sender,
+            claimAmount: _claimAmount,
+            status: ClaimStatus.Submitted,
+            submissionTime: block.timestamp,
+            medicalDocumentHash: _medicalDocumentHash,
+            reviewers: new address[](0)
+        });
+
+        claims[claimId] = newClaim;
+        userClaims[msg.sender].push(claimId);
+
+        emit ClaimSubmitted(claimId, msg.sender, _claimAmount);
+        return claimId;
+    }
+
+    function reviewClaim(uint256 _claimId, bool _approve) external {
+        Claim storage claim = claims[_claimId];
+        
+        // Ensure claim is under review
+        require(claim.status == ClaimStatus.Submitted, "Claim not reviewable");
+        
+        // Add reviewer
+        claim.reviewers.push(msg.sender);
+
+        // Simple majority voting mechanism
+        if (_approve) {
+            claim.status = ClaimStatus.Approved;
+        } else if (claim.reviewers.length >= 3) {
+            claim.status = ClaimStatus.Rejected;
+        }
+
+        emit ClaimStatusUpdated(_claimId, claim.status);
+    }
+
+    function getClaimDetails(uint256 _claimId) external view returns (Claim memory) {
+        return claims[_claimId];
+    }
+
+    function getUserClaims(address _user) external view returns (uint256[] memory) {
+        return userClaims[_user];
+    }
+}

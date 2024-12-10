@@ -1,0 +1,86 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract HealthInsurancePolicy is Ownable {
+    // Policy Structures
+    struct Policy {
+        uint256 id;
+        address policyholder;
+        uint256 coverageAmount;
+        uint256 premium;
+        uint256 startDate;
+        uint256 endDate;
+        bool isActive;
+        uint256 claimLimit;
+    }
+
+    // Mapping of policy ID to Policy details
+    mapping(uint256 => Policy) public policies;
+    mapping(address => uint256[]) public userPolicies;
+
+    // Events
+    event PolicyCreated(uint256 indexed policyId, address indexed policyholder, uint256 coverageAmount);
+    event PolicyRenewed(uint256 indexed policyId, uint256 newEndDate);
+    event PolicyCancelled(uint256 indexed policyId);
+
+    // Policy Management Functions
+    function createPolicy(
+        address _policyholder, 
+        uint256 _coverageAmount, 
+        uint256 _premium,
+        uint256 _duration
+    ) external onlyOwner returns (uint256) {
+        uint256 policyId = uint256(keccak256(abi.encodePacked(block.timestamp, _policyholder)));
+        
+        Policy memory newPolicy = Policy({
+            id: policyId,
+            policyholder: _policyholder,
+            coverageAmount: _coverageAmount,
+            premium: _premium,
+            startDate: block.timestamp,
+            endDate: block.timestamp + _duration,
+            isActive: true,
+            claimLimit: _coverageAmount / 2 // Default claim limit
+        });
+
+        policies[policyId] = newPolicy;
+        userPolicies[_policyholder].push(policyId);
+
+        emit PolicyCreated(policyId, _policyholder, _coverageAmount);
+        return policyId;
+    }
+
+    function renewPolicy(uint256 _policyId, uint256 _additionalDuration) external {
+        Policy storage policy = policies[_policyId];
+        require(policy.policyholder == msg.sender, "Only policyholder can renew");
+        require(policy.isActive, "Policy is not active");
+
+        policy.endDate += _additionalDuration;
+        emit PolicyRenewed(_policyId, policy.endDate);
+    }
+
+    function cancelPolicy(uint256 _policyId) external {
+        Policy storage policy = policies[_policyId];
+        require(policy.policyholder == msg.sender, "Only policyholder can cancel");
+        
+        policy.isActive = false;
+        emit PolicyCancelled(_policyId);
+    }
+
+    // Policy Verification Functions
+    function isPolicyValid(uint256 _policyId) public view returns (bool) {
+        Policy memory policy = policies[_policyId];
+        return policy.isActive && block.timestamp <= policy.endDate;
+    }
+
+    function getPolicyDetails(uint256 _policyId) external view returns (Policy memory) {
+        return policies[_policyId];
+    }
+
+    function getUserPolicies(address _user) external view returns (uint256[] memory) {
+        return userPolicies[_user];
+    }
+}
